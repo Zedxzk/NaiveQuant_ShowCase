@@ -39,6 +39,14 @@
 | 部署 | **双云服务器** · systemd 全栈守护 · 6 个常驻服务 |
 | 前端 | Svelte 5 研究控制台 + 独立运维监控台 |
 
+### 界面预览
+
+**研究控制台**（Svelte 5 · 回测记录 / 因子库 / 命令中心 / 工作区 / 终端 · 主题自适应）
+
+| 深色主题 | 浅色主题 |
+|:---:|:---:|
+| ![研究台·深色](assets/research-dark.png) | ![研究台·浅色](assets/research-light.png) |
+
 ---
 
 ## 二、核心能力
@@ -144,7 +152,7 @@ L0 叶子       constants · logger · config
 
 <div align="center">
 
-**作者：Zed XZK（西之堃）**
+**作者：Zed XZK**
 
 📮 xizhikun@outlook.com · zedxzk@163.com
 
