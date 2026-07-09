@@ -1,0 +1,7 @@
+# Showcase 仓库：仅文档 + 资产，无代码
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.vscode/
+*.tmp
