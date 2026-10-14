@@ -1,6 +1,6 @@
 # NaiveQuant 架构说明
 
-这份文档介绍 NaiveQuant 当前（**0.21.5**）的分层架构和几个关键边界。本文档从技术评审角度出发，仅说明公开结构，不展开专有实现细节。
+这份文档介绍 NaiveQuant 当前（**0.36.34**）的分层架构和几个关键边界。平台的 Python 包在 0.30 由 `naivequant` 更名为 `naivequant`（旧名保留为别名）。本文档从技术评审角度出发，仅说明公开结构，不展开专有实现细节。
 
 ## 1. 分层依赖模型
 
@@ -43,7 +43,7 @@
 
 ### 依赖红线是可执行的
 
-这些边界写成 `pyproject.toml` 中的 **19 条 import-linter 契约**，由 `lint-imports` 校验：
+这些边界写成 `pyproject.toml` 中的 **20 条 import-linter 契约**，由 `lint-imports` 校验：
 
 | 契约 | 含义 |
 |---|---|
@@ -55,14 +55,14 @@
 
 少量历史兼容 shim 以 `ignore_imports` 显式登记并注明原因（例如 PEP 562 惰性转发），实现代码不使用这些边。
 
-## 2. `quantplatform`、`trading_server` 与插件的边界
+## 2. `naivequant`、`trading_server` 与插件的边界
 
 ```
-trading_server  ──单向──►  quantplatform.*
-plugins/*       ──单向──►  quantplatform 公开 API
+trading_server  ──单向──►  naivequant.*
+plugins/*       ──单向──►  naivequant 公开 API
 ```
 
-**运维/推理服务 `trading_server`** 是一个独立包。它可以调用研究平台 `quantplatform` 的公开接口，但 `quantplatform` 不反向导入它。服务端主要依赖几类稳定接口：records、broker/env、auth 和 core 常量。早期曾有一些直接调用内部实现的代码，后来统一收敛到公开 facade 函数，避免 `quantplatform` 内部重构时波及服务端。
+**运维/推理服务 `trading_server`** 是一个独立包。它可以调用研究平台 `naivequant` 的公开接口，但 `naivequant` 不反向导入它。服务端主要依赖几类稳定接口：records、broker/env、auth 和 core 常量。早期曾有一些直接调用内部实现的代码，后来统一收敛到公开 facade 函数，避免 `naivequant` 内部重构时波及服务端。
 
 **插件**由一份白名单 YAML 治理，加载器按名动态加载，平台代码中不存在对任何插件的静态 import。每个插件带 `plugin.yaml`，声明自身版本、兼容的平台版本区间、提供的能力（`market_data` / `live_signal` / `ops_service` / `event_sink` / `research` / `screener` …）以及可选的研究台或运维台页面挂载点。
 
@@ -162,7 +162,7 @@ adjusted_price = raw_price × adj_factor(A) + adj_offset(B)
 
 ## 6. 安全与鉴权基座
 
-`quantplatform/auth/` 是研究台（本地 FastAPI）与运维台（远程 FastAPI）**共用**的完整鉴权基础设施，它只依赖 `core`，所以 `trading_server` 独立部署不会被拖入 UI 层。同一请求依次经过三层正交能力：
+`naivequant/auth/` 是研究台（本地 FastAPI）与运维台（远程 FastAPI）**共用**的完整鉴权基础设施，它只依赖 `core`，所以 `trading_server` 独立部署不会被拖入 UI 层。同一请求依次经过三层正交能力：
 
 | 层 | 关注点 | 失败 |
 |---|---|---|
@@ -202,8 +202,34 @@ adjusted_price = raw_price × adj_factor(A) + adj_offset(B)
 
 | 手段 | 说明 |
 |---|---|
-| `pytest` | 163 个测试文件、1,570+ 用例，按 data / factor / models / brokers / backtest / timing / plugins / trading_server 等域拆分子集 |
+| `pytest` | 229 个测试文件、2,170+ 个测试函数，按 data / factor / mining / models / brokers / backtest / timing / plugins / trading_server 等域拆分子集；显卡相关的用例在有显卡时另行运行 |
 | `ruff` | 统一 lint 与格式 |
-| `import-linter` | 19 条分层契约，防止依赖方向回潮 |
+| `import-linter` | 20 条分层契约，防止依赖方向回潮 |
 | `scripts/check_docs.py` | 校验文档本地链接与 anchor、平台/插件版本一致性、文档索引覆盖、归档状态标识、环境变量与关键数量事实 |
 | 运行归档 | 每次研究运行的配置、命令、标的、指标和报告统一落库，可按 `run_id` 复原 |
+
+## 9. 因子研究子系统
+
+0.22 以后，因子研究的计算都收拢到 `factor` 领域内的几个子包，研究脚本只负责“搜索什么、怎么入库”，不再各自实现计算：
+
+```
+factor/
+├── panel/        面板计算引擎
+│   ├── data/     原料面板：按 catalog 装载日线、分钟线、估值、事件、行业、宏观，带预热期
+│   ├── lang/     公式语言：表达式树、算子注册、记忆长度、子式缓存、取值指纹
+│   ├── search/   搜索算法：分层搜索、演化搜索、搜索空间（量纲与冗余规则）
+│   ├── model/    模型因子：特征矩阵、截面注意力网络、梯度提升树、训练与推断
+│   └── signal/   冻结信号：定义 + 权重 + 原料规格 + 哈希，可在任意面板上重算核对
+├── mining/       逐年挖掘：评价口径、逐日成绩表、入围与入库、安慰剂校准、报告
+├── scoring.py    唯一的打分实现（前 20% 净超额、上半截排序、换手、稳定性）
+├── values.py     因子取值的唯一入口
+└── factor_library.py   因子库：状态、分库口径、审计、样本外跟踪
+```
+
+几条约束：
+
+- **取值只有一个入口**。因子一律是“平台可重算的冻结信号”；回测、组合、报告取因子值都走 `factor.values`，不各自重算。0.36 删除了旧的因子类引擎，不保留兼容。
+- **结果与数据起点无关**。每个算子登记记忆长度，面板开头记忆长度不足的行不给值；入库前用另一块面板重算并逐位核对，不一致的不入库。
+- **人工把关生命周期**。挖掘程序只能把因子登记为候选；升级、退役、删除由人执行，程序调用会被拒绝。
+- **长任务可续跑、受资源约束**。逐年挖掘写成流程定义（年份 × 步骤），由 `scheduler` 执行；每一步向资源账本申领内存与显存，超出额度由守护进程终止并重试，状态与日志在界面的任务页可见。
+
