@@ -1,6 +1,6 @@
 # NaiveQuant 架构说明
 
-这份文档介绍 NaiveQuant 当前（**0.36.34**）的分层架构和几个关键边界。平台的 Python 包在 0.30 由 `naivequant` 更名为 `naivequant`（旧名保留为别名）。本文档从技术评审角度出发，仅说明公开结构，不展开专有实现细节。
+这份文档介绍 NaiveQuant 当前（**0.36.34**）的分层架构和几条关键边界。平台的 Python 包在 0.30 由 `quantplatform` 更名为 `naivequant`（旧名保留为别名）。下面只讲分层结构和边界，不涉及实现细节。
 
 ## 1. 分层依赖模型
 
@@ -28,18 +28,18 @@
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-职责边界（与代码中的契约一致）：
+各层职责（跟代码里的契约一致）：
 
 - `core` 定义协议和编排基础，不依赖市场、模型、执行或 UI 实现。
 - `data` 读取市场数据；`factor` 计算/读取因子并维护因子生命周期。
-- `ml` 提供数据集、模型和通用 walk-forward，不持有 timing 决策或执行规则。
+- `ml` 提供数据集、模型和通用 walk-forward，不含 timing 决策和执行规则。
 - `timing` 把 routed dataset 转成 OOS 时序预测；市场和数据源不进入公共引擎名。
 - `portfolio` / `strategy` / `risk` / `policy` 形成账户目标与约束。
 - `execution` 消费决策，负责成交、成本和账户；`trading` 负责常驻模拟/实盘运行。
 - `reporting` 和 `visualization` 只呈现已有结果；`archive` 保存运行上下文和产物。
-- `cli`、`ui`、`workflows` 是入口/编排层，不应被底层计算模块反向依赖。
+- `cli`、`ui`、`workflows` 是入口/编排层，底层计算模块不应该反过来依赖它们。
 
-被依赖最多的模块是 `core/workspace`、`core/constants`、`core/protocols`、`auth`、`core/logger` 和 `core/config`。这些模块位于基础层，改动影响范围较大，因此接口设计力求稳定。
+被依赖最多的模块是 `core/workspace`、`core/constants`、`core/protocols`、`auth`、`core/logger` 和 `core/config`。它们在基础层，改一处影响面很大，所以接口尽量保持稳定。
 
 ### 依赖红线是可执行的
 
@@ -62,17 +62,17 @@ trading_server  ──单向──►  naivequant.*
 plugins/*       ──单向──►  naivequant 公开 API
 ```
 
-**运维/推理服务 `trading_server`** 是一个独立包。它可以调用研究平台 `naivequant` 的公开接口，但 `naivequant` 不反向导入它。服务端主要依赖几类稳定接口：records、broker/env、auth 和 core 常量。早期曾有一些直接调用内部实现的代码，后来统一收敛到公开 facade 函数，避免 `naivequant` 内部重构时波及服务端。
+**运维/推理服务 `trading_server`** 是一个独立包：它可以调研究平台 `naivequant` 的公开接口，但 `naivequant` 不会反过来 import 它。服务端主要依赖几类稳定接口：records、broker/env、auth 和 core 常量。早期有些地方直接调内部实现，后来都收到公开的 facade 函数里，免得 `naivequant` 内部重构时波及服务端。
 
-**插件**由一份白名单 YAML 治理，加载器按名动态加载，平台代码中不存在对任何插件的静态 import。每个插件带 `plugin.yaml`，声明自身版本、兼容的平台版本区间、提供的能力（`market_data` / `live_signal` / `ops_service` / `event_sink` / `research` / `screener` …）以及可选的研究台或运维台页面挂载点。
+**插件**由一份白名单 YAML 治理，加载器按名字动态加载，平台代码里没有任何一处静态 import 插件。每个插件带 `plugin.yaml`，声明自身版本、兼容的平台版本区间、提供的能力（`market_data` / `live_signal` / `ops_service` / `event_sink` / `research` / `screener` …）以及可选的研究台或运维台页面挂载点。
 
-治理上的三条约束：
+插件治理上有三条约束：
 
-- **启停零代码改动**：改白名单里的 `enabled` 即可，`git diff` 可查，运维台可见。
+- **启停不用改代码**：只改白名单里的 `enabled`，`git diff` 里能看到，运维台也能看到。
 - **fail-closed**：启用但未安装或版本不兼容时直接抛错并在运维台标红，不静默降级。
 - **页面不混挂**：研究插件页由研究台承载，声明 `ops_ui` 的管理页面只由运维台承载，避免配置和服务操作绕过登录、RBAC 与 TOTP 边界。
 
-## 3. YAML 驱动的流水线：显式 DAG 与 Legacy 平铺
+## 3. 用 YAML 配置的流水线：显式 DAG 与 Legacy 平铺
 
 平台有两种 pipeline 配置形态，共用同一个 runner 门面。
 
@@ -131,11 +131,11 @@ runner 不理解 timing、L2 或某个具体市场，只按拓扑顺序实例化
    券商适配器(Alpaca/Futu/IBKR/Longbridge/QMT) → 报告 → 运行归档 → 运维监控
 ```
 
-执行层仅接收最终账户决策，不包含具体交易规则。研究阶段产出的目标权重和风控后的账户决策，可直接复用于纸账户或实盘路径，无需重写下单逻辑。
+执行层只接收最终的账户决策，具体交易规则不在这里。研究阶段产出的目标权重、风控后的账户决策，可以直接复用到纸账户或实盘，不用重写下单逻辑。
 
 ## 4. DuckDB 存储和并发
 
-DuckDB 的写入模型更适合单进程分析场景，但长期运行的采集服务与研究进程会并发访问数据。具体处理方式如下：
+DuckDB 的写入模型更适合单进程分析，但采集服务和研究进程会长期并发访问同一批数据。这里的做法是：
 
 - **写入器不长期持有锁**：`open → write → close`，每次写完即释放连接。
 - **只读连接按库区分**：静态研究库在进程内复用只读句柄，降低磁盘 I/O 较慢时反复建连的开销；可更新的 canonical 库显式关闭句柄复用，避免研究服务长期持有只读锁导致采集任务无法写入。
@@ -147,8 +147,8 @@ DuckDB 的写入模型更适合单进程分析场景，但长期运行的采集�
 为避免前视偏差，平台在采集层就标记数据属于哪个财报周期、何时对外可见：
 
 - SEC EDGAR 财报同时保存 `period_end` 和 `filed`→`available_at`。
-- 因子和回测行至任一历史时点，只能读取当时已经公布的数据。
-- 这一约束在数据层就已落地，后续的因子、回测和组合模块均按同一套时间口径取数。
+- 因子和回测回放到任一历史时点，只能读到当时已经公布的数据。
+- 这条约束在数据层就卡死了，后面的因子、回测、组合都按同一套时间口径取数。
 
 复权统一采用**仿射复权**：
 
@@ -162,7 +162,7 @@ adjusted_price = raw_price × adj_factor(A) + adj_offset(B)
 
 ## 6. 安全与鉴权基座
 
-`naivequant/auth/` 是研究台（本地 FastAPI）与运维台（远程 FastAPI）**共用**的完整鉴权基础设施，它只依赖 `core`，所以 `trading_server` 独立部署不会被拖入 UI 层。同一请求依次经过三层正交能力：
+`naivequant/auth/` 是研究台（本地 FastAPI）和运维台（远程 FastAPI）**共用**的鉴权基座：它只依赖 `core`，所以独立部署的 `trading_server` 不会因此被拖进 UI 层。一个请求要依次过三道互不相干的检查：
 
 | 层 | 关注点 | 失败 |
 |---|---|---|
@@ -195,17 +195,17 @@ adjusted_price = raw_price × adj_factor(A) + adj_offset(B)
 
 - systemd `--user` + linger：免登录常驻，`Restart=on-failure` 自动重启；共 16 个 unit。
 - 凭证主口令仅保存在 systemd 用户管理器内存中，通过 `set-environment` 传递给服务，不写入磁盘。
-- 部署主机以受管服务器列表为唯一事实源，脚本中不内嵌任何公网 IP；列表外的主机在建立网络连接前即被拒绝。
-- 部署使用增量 rsync，排除 `.git`、数据、运行缓存和快照目录，安装后进行冒烟测试和版本核对，并按固定顺序显式重启各 unit，保证已 active 的旧进程也加载当前 revision。
+- 部署以受管服务器列表为准，脚本里不内嵌任何公网 IP；名单外的主机在建立网络连接之前就被拒掉。
+- 部署使用增量 rsync，排除 `.git`、数据、运行缓存和快照目录，安装后跑一遍冒烟测试和版本核对，再按固定顺序显式重启各 unit，让已经 active 的旧进程也加载到当前 revision。
 
 ## 8. 质量保障
 
 | 手段 | 说明 |
 |---|---|
-| `pytest` | 229 个测试文件、2,170+ 个测试函数，按 data / factor / mining / models / brokers / backtest / timing / plugins / trading_server 等域拆分子集；显卡相关的用例在有显卡时另行运行 |
+| `pytest` | 229 个测试文件、2,170+ 个测试函数，按 data / factor / mining / models / brokers / backtest / timing / plugins / trading_server 等域拆分子集；显卡相关的用例有显卡时另外跑 |
 | `ruff` | 统一 lint 与格式 |
 | `import-linter` | 20 条分层契约，防止依赖方向回潮 |
-| `scripts/check_docs.py` | 校验文档本地链接与 anchor、平台/插件版本一致性、文档索引覆盖、归档状态标识、环境变量与关键数量事实 |
+| `scripts/check_docs.py` | 校验文档本地链接与 anchor、平台/插件版本是否一致、文档索引有没有漏、归档状态标识、环境变量和关键数字 |
 | 运行归档 | 每次研究运行的配置、命令、标的、指标和报告统一落库，可按 `run_id` 复原 |
 
 ## 9. 因子研究子系统
