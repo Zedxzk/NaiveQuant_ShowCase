@@ -9,7 +9,7 @@
 ![version](https://img.shields.io/badge/version-0.36.34-blue)
 ![code](https://img.shields.io/badge/代码量-258k+_行-green)
 ![modules](https://img.shields.io/badge/顶层模块-29-orange)
-![plugins](https://img.shields.io/badge/治理插件-7-purple)
+![plugins](https://img.shields.io/badge/插件-7-purple)
 ![markets](https://img.shields.io/badge/覆盖市场-美股_·_港股_·_A股-red)
 ![license](https://img.shields.io/badge/授权-专有-lightgrey)
 
@@ -38,7 +38,7 @@
 | 测试 | 229 个测试文件、**2,170+** 个测试函数，按域拆分子集 |
 | 依赖红线 | **20** 条 import-linter 分层契约，随 lint 强制执行 |
 | 覆盖市场 | 美股、港股、A 股（含 A 股分钟线与 L2 逐笔 / 盘口）；**5 个券商适配器** |
-| 插件 | **7** 个白名单治理插件，启停只改 YAML |
+| 插件 | **7** 个白名单插件，启停只改 YAML |
 | 前端 | Svelte 5 研究控制台（27 个功能页）+ 独立运维监控台 |
 
 ### 界面预览（0.36）

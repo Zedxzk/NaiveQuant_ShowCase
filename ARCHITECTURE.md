@@ -64,9 +64,9 @@ plugins/*       ──单向──►  naivequant 公开 API
 
 **运维/推理服务 `trading_server`** 是一个独立包：它可以调研究平台 `naivequant` 的公开接口，但 `naivequant` 不会反过来 import 它。服务端主要依赖几类稳定接口：records、broker/env、auth 和 core 常量。早期有些地方直接调内部实现，后来都收到公开的 facade 函数里，免得 `naivequant` 内部重构时波及服务端。
 
-**插件**由一份白名单 YAML 治理，加载器按名字动态加载，平台代码里没有任何一处静态 import 插件。每个插件带 `plugin.yaml`，声明自身版本、兼容的平台版本区间、提供的能力（`market_data` / `live_signal` / `ops_service` / `event_sink` / `research` / `screener` …）以及可选的研究台或运维台页面挂载点。
+**插件**由一份白名单 YAML 管理，加载器按名字动态加载，平台代码里没有任何一处静态 import 插件。每个插件带 `plugin.yaml`，声明自身版本、兼容的平台版本区间、提供的能力（`market_data` / `live_signal` / `ops_service` / `event_sink` / `research` / `screener` …）以及可选的研究台或运维台页面挂载点。
 
-插件治理上有三条约束：
+插件体系有三条约定：
 
 - **启停不用改代码**：只改白名单里的 `enabled`，`git diff` 里能看到，运维台也能看到。
 - **fail-closed**：启用但未安装或版本不兼容时直接抛错并在运维台标红，不静默降级。
